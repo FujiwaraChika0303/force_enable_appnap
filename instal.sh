@@ -1,104 +1,83 @@
 #!/bin/bash
-#
-# 🌙 AppFN By KurisuRakko – All‑in‑One (CN/EN)
-# Version 1.0.0
-# --------------------------------------------
+# ================================================================
+# 🌙 AppFN By KurisuRakko – Manager Script (更新 & 回滚)
+# 该脚本只负责兩件事：
+#   1. 從 GitHub 拉取最新的 App Nap 强制脚本 (forcenap.sh)
+#      與回滚脚本 (restore_appnap_backup.sh)
+#   2. 一鍵回滚所有已修改的 Info.plist（還原備份）
+# ================================================================
+# Version
+APPFN_MANAGER_VER="1.0.0"
 
-APPFN_VERSION="1.0.0"
-BACKUP_DIR="$HOME/AppNapBackup"
+# GitHub Raw base (adjust if you fork / mirror)
+RAW_BASE="https://raw.githubusercontent.com/FujiwaraChika0303/force_enable_appnap/main"
+
+# Local paths
 FORCE_NAP="$HOME/forcenap.sh"
 RESTORE_NAP="$HOME/restore_appnap_backup.sh"
-SELF_SCRIPT="$HOME/AppFN.sh"
-GITHUB_RAW_BASE="https://raw.githubusercontent.com/FujiwaraChika0303/force_enable_appnap/refs/heads/main"
+BACKUP_DIR="$HOME/AppNapBackup"
 
-# ========== 小工具 ==========
-cn() { echo -e "$1" ; }               # 打印中文
-en() { echo -e "$2" ; }               # 打印英文
-sep() { echo "----------------------------------------"; }
-pause() { read -rp ">> "; }
+# Helper: divider line
+sep() { echo "----------------------------------------------"; }
 
-# ========== 菜单 ==========
-show_menu() {
-  echo ""
-  echo "🌙  AppFN By KurisuRakko – v$APPFN_VERSION"
-  echo "========================================"
-  echo "1) 强制启用 App Nap / Enable App Nap"
-  echo "2) 回滚所有修改    / Rollback changes"
-  echo "3) 查看最近日志    / View latest log"
-  echo "4) 检查并更新脚本  / Update AppFN"
-  echo "5) 卸载 AppFN      / Uninstall AppFN"
-  echo "6) 退出            / Exit"
-  echo ""
-}
+# Helper: pause and wait for <Enter>
+pause() { read -rp "[Enter] 继续 / Continue..."; }
 
-# ========== 功能实现 ==========
-enable_appnap() {
+# ===== Action: Update scripts =====
+update_scripts() {
   sep
-  cn "🛠 正在启用 App Nap..."        en "🛠 Enabling App Nap..."
-  sudo force_enable_appnap
-  sep
-  cn "✅ 操作完成。"                en "✅ Done."
-  pause
-}
+  echo "🌐 正在下载最新版脚本 / Downloading latest scripts...";
 
-rollback_appnap() {
-  sep
-  cn "↩️ 正在回滚修改..."           en "↩️ Rolling back..."
-  sudo restore_appnap
-  sep
-  cn "✅ 回滚完成。"                en "✅ Rollback done."
-  pause
-}
+  curl -fsSL "$RAW_BASE/forcenap.sh" \
+    -o "$FORCE_NAP" && echo "✅ forcenap.sh 已更新 / Updated" || {
+      echo "❌ 无法下载 forcenap.sh"; return 1; }
 
-view_latest_log() {
-  sep
-  LATEST_LOG=$(ls -t "$BACKUP_DIR"/*.log 2>/dev/null | head -n 1)
-  if [[ -f "$LATEST_LOG" ]]; then
-    cn "📄 最近日志："               en "📄 Latest log:"
-    echo "$LATEST_LOG"
-    sep
-    cat "$LATEST_LOG"
-  else
-    cn "⚠️ 未找到日志。"            en "⚠️ No log found."
+  curl -fsSL "$RAW_BASE/restore_appnap_backup.sh" \
+    -o "$RESTORE_NAP" && echo "✅ restore_appnap_backup.sh 已更新 / Updated" || {
+      echo "❌ 无法下载 restore_appnap_backup.sh"; return 1; }
+
+  chmod +x "$FORCE_NAP" "$RESTORE_NAP"
+
+  # (可选) 重新建立软链 – 只有在不存在时创建
+  if ! command -v force_enable_appnap >/dev/null 2>&1; then
+    sudo ln -s "$FORCE_NAP" /usr/local/bin/force_enable_appnap 2>/dev/null || true
   fi
-  pause
-}
-
-update_appfn() {
-  sep
-  cn "🌐 正在更新脚本..."           en "🌐 Updating scripts..."
-  curl -L "$GITHUB_RAW_BASE/forcenap.sh"              -o "$FORCE_NAP"
-  curl -L "$GITHUB_RAW_BASE/restore_appnap_backup.sh" -o "$RESTORE_NAP"
-  curl -L "$GITHUB_RAW_BASE/AppFN.sh"                 -o "$SELF_SCRIPT"
-  chmod +x "$FORCE_NAP" "$RESTORE_NAP" "$SELF_SCRIPT"
-  cn "✅ 更新完成。"                en "✅ Update finished."
-  sep
-  cn "是否重建命令链接？(y/n)"      en "Re‑create symlinks? (y/n)"
-  read -r ans
-  if [[ "$ans" =~ ^[Yy]$ ]]; then
-    sudo ln -sf "$FORCE_NAP"   /usr/local/bin/force_enable_appnap
-    sudo ln -sf "$RESTORE_NAP" /usr/local/bin/restore_appnap
-    sudo ln -sf "$SELF_SCRIPT" /usr/local/bin/appfn
-    cn "✅ 链接已更新。"            en "✅ Symlinks updated."
+  if ! command -v restore_appnap >/dev/null 2>&1; then
+    sudo ln -s "$RESTORE_NAP" /usr/local/bin/restore_appnap 2>/dev/null || true
   fi
+
+  sep
+  echo "✨ 脚本更新完成 / Scripts updated!"
   pause
 }
 
-uninstall_appfn() {
+# ===== Action: Rollback =====
+rollback_all() {
   sep
-  cn "⚠️ 即将卸载 AppFN，并可选择是否删除备份。" \
-     en "⚠️ About to uninstall AppFN. You may also delete backups."
-  cn "确定卸载？(y/n)"             en "Proceed? (y/n)"
-  read -r yesno
-  if [[ "$yesno" =~ ^[Yy]$ ]]; then
-    sudo rm -f /usr/local/bin/force_enable_appnap /usr/local/bin/restore_appnap /usr/local/bin/appfn
-    rm -f "$FORCE_NAP" "$RESTORE_NAP" "$SELF_SCRIPT"
-    cn "是否删除所有备份日志？(y/n)" \
-       en "Delete all backup & log files? (y/n)"
-    read -r delbk
-    if [[ "$delbk" =~ ^[Yy]$ ]]; then
-      rm -rf "$BACKUP_DIR"
-      cn "🗑 已删除备份与日志。"     en "🗑 Backups & logs removed."
-    fi
-    cn "✅ 卸载完成，再见！"        en "✅ Uninstall complete. Bye!"
-   
+  echo "↩️  正在回滚所有修改 / Rolling back all changes..."
+  if [ ! -f "$RESTORE_NAP" ]; then
+    echo "❌ 找不到 restore_appnap_backup.sh！请先运行更新。 / restore_appnap_backup.sh missing. Run update first."; pause; return; fi
+
+  sudo "$RESTORE_NAP"
+  sep
+  echo "✅ 回滚完成 / Rollback done."
+  pause
+}
+
+# ===== Main Menu Loop =====
+while true; do
+  clear
+  echo "🌙 AppFN Manager – v$APPFN_MANAGER_VER"
+  sep
+  echo "1) 更新脚本 (forcenap + restore) / Update scripts"
+  echo "2) 回滚所有修改 / Rollback changes"
+  echo "3) 退出 / Exit"
+  sep
+  read -rp "请选择 / Select option » " choice
+  case "$choice" in
+    1) update_scripts ;;
+    2) rollback_all   ;;
+    3) echo "Bye! 👋"; exit 0 ;;
+    *) echo "❌ 无效选项 / Invalid option"; pause ;;
+  esac
+done
